@@ -1,0 +1,35 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: fixflow-postgres
+    environment:
+      POSTGRES_DB: fixflow
+      POSTGRES_USER: fixflow
+      POSTGRES_PASSWORD: fixflow
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fixflow"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: fixflow-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: fixflow
+      RABBITMQ_DEFAULT_PASS: fixflow
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
