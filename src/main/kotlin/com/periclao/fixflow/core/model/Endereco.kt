@@ -1,5 +1,6 @@
 package com.periclao.fixflow.core.model
 
+import com.periclao.fixflow.core.model.enums.UF
 import java.util.UUID
 
 data class Endereco(

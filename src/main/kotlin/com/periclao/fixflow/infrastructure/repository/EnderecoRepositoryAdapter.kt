@@ -22,7 +22,4 @@ class EnderecoRepositoryAdapter(
 
     override fun deletar(id: UUID) =
         jpaRepository.deleteById(id)
-
-    override fun existeEnderecoPrincipal(clienteId: UUID): Boolean =
-        jpaRepository.existsByClienteIdAndPrincipalTrue(clienteId)
 }

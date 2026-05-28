@@ -8,5 +8,4 @@ interface EnderecoRepositoryPort {
     fun buscarPorId(id: UUID): Endereco?
     fun listarPorCliente(clienteId: UUID): List<Endereco>
     fun deletar(id: UUID)
-    fun existeEnderecoPrincipal(clienteId: UUID): Boolean
 }
