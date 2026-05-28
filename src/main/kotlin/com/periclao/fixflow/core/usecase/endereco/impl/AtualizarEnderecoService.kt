@@ -7,7 +7,6 @@ import com.periclao.fixflow.core.model.Endereco
 import com.periclao.fixflow.core.repository.ClienteRepositoryPort
 import com.periclao.fixflow.core.repository.EnderecoRepositoryPort
 import com.periclao.fixflow.core.usecase.endereco.AtualizarEnderecoUseCase
-import java.util.UUID
 
 class AtualizarEnderecoService(
     private val clienteRepository: ClienteRepositoryPort,
@@ -24,7 +23,7 @@ class AtualizarEnderecoService(
         if (!cliente.ativo) throw ClienteInativoException(endereco.clienteId)
 
         if (command.principal && !endereco.principal) {
-            desmarcarPrincipalAtual(endereco.clienteId, command.id)
+            DesmarcarEnderecoPrincipal.executar(enderecoRepository, endereco.clienteId, command.id)
         }
 
         val enderecoAtualizado = endereco.copy(
@@ -39,11 +38,5 @@ class AtualizarEnderecoService(
         )
 
         return enderecoRepository.salvar(enderecoAtualizado)
-    }
-
-    private fun desmarcarPrincipalAtual(clienteId: UUID, excluirId: UUID) {
-        enderecoRepository.listarPorCliente(clienteId)
-            .filter { it.principal && it.id != excluirId }
-            .forEach { enderecoRepository.salvar(it.copy(principal = false)) }
     }
 }

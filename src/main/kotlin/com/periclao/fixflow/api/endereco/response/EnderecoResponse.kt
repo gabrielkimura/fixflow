@@ -1,7 +1,7 @@
 package com.periclao.fixflow.api.endereco.response
 
 import com.periclao.fixflow.core.model.Endereco
-import com.periclao.fixflow.core.model.UF
+import com.periclao.fixflow.core.model.enums.UF
 import java.util.UUID
 
 data class EnderecoResponse(

@@ -1,4 +1,4 @@
-package com.periclao.fixflow.core.model
+package com.periclao.fixflow.core.model.enums
 
 enum class UF {
     AC, AL, AP, AM, BA, CE, DF, ES, GO,

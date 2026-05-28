@@ -1,6 +1,6 @@
 package com.periclao.fixflow.infrastructure.entity
 
-import com.periclao.fixflow.core.model.UF
+import com.periclao.fixflow.core.model.enums.UF
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
 import jakarta.persistence.EnumType

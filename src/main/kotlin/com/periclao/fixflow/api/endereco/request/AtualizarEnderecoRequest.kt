@@ -1,6 +1,6 @@
 package com.periclao.fixflow.api.endereco.request
 
-import com.periclao.fixflow.core.model.UF
+import com.periclao.fixflow.core.model.enums.UF
 import com.periclao.fixflow.core.usecase.endereco.AtualizarEnderecoUseCase
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.NotNull

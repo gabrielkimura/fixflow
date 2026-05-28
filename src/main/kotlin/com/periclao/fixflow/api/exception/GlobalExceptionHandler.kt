@@ -4,6 +4,8 @@ import com.periclao.fixflow.core.exception.ClienteInativoException
 import com.periclao.fixflow.core.exception.ClienteNaoEncontradoException
 import com.periclao.fixflow.core.exception.EmailJaCadastradoException
 import com.periclao.fixflow.core.exception.EnderecoNaoEncontradoException
+import com.periclao.fixflow.core.exception.TecnicoInativoException
+import com.periclao.fixflow.core.exception.TecnicoNaoEncontradoException
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.MethodArgumentNotValidException
@@ -13,15 +15,19 @@ import org.springframework.web.bind.annotation.RestControllerAdvice
 @RestControllerAdvice
 class GlobalExceptionHandler {
 
-    @ExceptionHandler(ClienteNaoEncontradoException::class, EnderecoNaoEncontradoException::class)
+    @ExceptionHandler(
+        ClienteNaoEncontradoException::class,
+        EnderecoNaoEncontradoException::class,
+        TecnicoNaoEncontradoException::class
+    )
     fun handleNaoEncontrado(ex: RuntimeException): ResponseEntity<ErroResponse> =
         ResponseEntity.status(HttpStatus.NOT_FOUND)
             .body(ErroResponse(status = 404, mensagem = ex.message ?: "Recurso não encontrado"))
 
-    @ExceptionHandler(ClienteInativoException::class)
-    fun handleClienteInativo(ex: ClienteInativoException): ResponseEntity<ErroResponse> =
+    @ExceptionHandler(ClienteInativoException::class, TecnicoInativoException::class)
+    fun handleRecursoInativo(ex: RuntimeException): ResponseEntity<ErroResponse> =
         ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
-            .body(ErroResponse(status = 422, mensagem = ex.message ?: "Cliente inativo"))
+            .body(ErroResponse(status = 422, mensagem = ex.message ?: "Recurso inativo"))
 
     @ExceptionHandler(EmailJaCadastradoException::class)
     fun handleEmailDuplicado(ex: EmailJaCadastradoException): ResponseEntity<ErroResponse> =

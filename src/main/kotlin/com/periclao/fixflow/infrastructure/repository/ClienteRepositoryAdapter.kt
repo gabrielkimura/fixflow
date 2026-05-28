@@ -23,12 +23,6 @@ class ClienteRepositoryAdapter(
         return ClienteMapper.toDomain(entity, enderecos)
     }
 
-    override fun buscarPorEmail(email: String): Cliente? {
-        val entity = clienteJpaRepository.findByEmail(email) ?: return null
-        val enderecos = enderecoJpaRepository.findByClienteId(entity.id).map { EnderecoMapper.toDomain(it) }
-        return ClienteMapper.toDomain(entity, enderecos)
-    }
-
     override fun listar(): List<Cliente> {
         val clientes = clienteJpaRepository.findAll()
         val clienteIds = clientes.map { it.id }.toSet()

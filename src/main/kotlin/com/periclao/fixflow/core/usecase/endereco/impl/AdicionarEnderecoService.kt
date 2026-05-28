@@ -19,7 +19,7 @@ class AdicionarEnderecoService(
 
         if (!cliente.ativo) throw ClienteInativoException(command.clienteId)
 
-        if (command.principal) desmarcarPrincipalAtual(command.clienteId)
+        if (command.principal) DesmarcarEnderecoPrincipal.executar(enderecoRepository, command.clienteId)
 
         val novoEndereco = Endereco(
             id = UUID.randomUUID(),
@@ -35,11 +35,5 @@ class AdicionarEnderecoService(
         )
 
         return enderecoRepository.salvar(novoEndereco)
-    }
-
-    private fun desmarcarPrincipalAtual(clienteId: UUID) {
-        enderecoRepository.listarPorCliente(clienteId)
-            .filter { it.principal }
-            .forEach { enderecoRepository.salvar(it.copy(principal = false)) }
     }
 }

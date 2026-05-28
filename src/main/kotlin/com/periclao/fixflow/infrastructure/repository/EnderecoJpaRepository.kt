@@ -7,5 +7,4 @@ import java.util.UUID
 interface EnderecoJpaRepository : JpaRepository<EnderecoEntity, UUID> {
     fun findByClienteId(clienteId: UUID): List<EnderecoEntity>
     fun findByClienteIdIn(clienteIds: Set<UUID>): List<EnderecoEntity>
-    fun existsByClienteIdAndPrincipalTrue(clienteId: UUID): Boolean
 }

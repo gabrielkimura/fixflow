@@ -1,7 +1,7 @@
 package com.periclao.fixflow.core.usecase.endereco
 
 import com.periclao.fixflow.core.model.Endereco
-import com.periclao.fixflow.core.model.UF
+import com.periclao.fixflow.core.model.enums.UF
 import java.util.UUID
 
 interface AtualizarEnderecoUseCase {
