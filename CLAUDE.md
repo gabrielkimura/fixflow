@@ -32,25 +32,33 @@ Code must be strictly divided into `core` (pure, isolated, no frameworks) and `i
 src/main/kotlin/com/periclao/fixflow/
  ├── core/                  # Pure Domain (No Spring, JPA, Jackson, or Jakarta annotations)
  │    ├── model/            # Domain data classes, Enums, Pure business rules
+ │    │                     #   Also: AuthenticatedUser, Role, pagination types
+ │    │                     #   (Page, PageRequest, SortOrder), *SearchCriteria,
+ │    │                     #   ChannelType, ClientChannel
  │    ├── usecase/          # Services/Use cases (Interfaces and Implementations)
- │    ├── repository/       # Output Ports (Persistence interfaces)
+ │    │                     #   Includes search/query use cases (paginated + filtered)
+ │    ├── repository/       # Output Ports (Persistence interfaces, criteria-aware)
  │    ├── event/            # Output Ports (Messaging/event interfaces)
- │    └── exception/        # Pure business exceptions
+ │    └── exception/        # Pure business exceptions (e.g. AccessDeniedDomainException)
  ├── infrastructure/        # OUTPUT Adapters (Spring Data JPA, RabbitMQ, etc.)
  │    ├── entity/           # JPA Entities (@Entity, @Table)
- │    ├── repository/       # Spring Data JPA + Port Implementations
+ │    ├── repository/       # Spring Data JPA + Port Implementations (Specifications)
  │    ├── mapper/           # Explicit Mappers (Core Model <-> Entity)
+ │    ├── security/         # Spring Security / JWT config; principal -> AuthenticatedUser
  │    ├── config/           # Spring Beans (@Configuration, manual UseCase instantiation)
- │    └── integration/      # Output Adapters (RabbitMQ/Kafka, Webhooks, SQS)
- └── api/                   # INPUT Adapters (HTTP — REST Controllers)
+ │    └── integration/      # OUTPUT Adapters (RabbitMQ/Kafka, Webhooks, SQS,
+ │                          #   outbound bot messaging)
+ └── api/                   # INPUT Adapters (HTTP — REST Controllers, bot webhooks)
       ├── cliente/
       │    ├── request/     # Input DTOs with Jakarta validations
       │    ├── response/    # Output DTOs
       │    └── ClienteController.kt
-      └── endereco/
-           ├── request/
-           ├── response/
-           └── EnderecoController.kt
+      ├── endereco/
+      │    ├── request/
+      │    ├── response/
+      │    └── EnderecoController.kt
+      └── bot/              # INPUT Adapter: inbound WhatsApp/Telegram webhooks
+                            #   resolve AuthenticatedUser, then call core use cases
 ```
 
 ---
@@ -68,11 +76,69 @@ src/main/kotlin/com/periclao/fixflow/
 
 ---
 
+## API Design & Resource Access (User / Frontend-Oriented)
+
+The goal of this section is a frontend that never forces a human to know an internal ID. IDs stay; we add discovery and identity around them.
+
+- **Opaque UUIDs remain canonical in URLs.** The frontend obtains IDs from search/list endpoints; a human never types or memorizes them. Never use PII (CPF/CNPJ) as a URL path identifier — it leaks personal data into logs/history and breaks if the document changes.
+- **Identity from the security context ("me" endpoints).** The authenticated client/technician never passes their own ID; it is derived from the token:
+    - `GET /clientes/me`, `GET /clientes/me/enderecos`, `GET /clientes/me/chamados`
+    - `GET /tecnicos/me`, `GET /tecnicos/me/chamados`
+- **Search-first.** Every aggregate exposes a filtered, paginated list endpoint so resources are discoverable by human attributes (this is how an ADMIN obtains a target ID — search, then drill in by ID):
+    - Cliente: `nome` (partial), `documento` (exact CPF/CNPJ), `email`, `ativo`, `cidade`, `uf`
+    - Tecnico: `nome`, `categoria`, `disponivel`, `documento`
+    - Chamado: `status`, `categoria`, `clienteId`, `tecnicoId`, `protocolo`, `criadoDe`, `criadoAte`
+    - All list endpoints accept `page`, `size`, `sort`.
+- **Human-facing ticket identifier.** Each `Chamado` has a readable `protocolo` (e.g. `FF-2026-000123`) for support/UX, generated on creation and unique. It is a business identifier for lookup/communication — distinct from the internal UUID, which stays the canonical key.
+
+---
+
+## Authentication & Authorization
+
+- **Authentication at the boundary only.** Spring Security / JWT lives in `infrastructure.security` and `api`. **Core NEVER imports Spring Security** (or any framework).
+- **Pure principal into use cases.** Controllers extract the authenticated principal and pass a pure `AuthenticatedUser` (`core.model`) into the use cases: `{ userId, role, clienteId?, tecnicoId? }`. No framework types cross into `core`.
+- **Roles:** `ADMIN`, `CLIENT`, `TECHNICIAN`.
+- **Two-layer authorization:**
+    - Coarse role guard at the boundary — can this role hit this endpoint at all.
+    - **Ownership / scope invariants enforced in `core` use cases** (this is a domain invariant, not an HTTP concern):
+        - `CLIENT`: queries are force-scoped to their own `clienteId`; cannot read others' data, even if they pass another ID.
+        - `TECHNICIAN`: scoped to assigned tickets.
+        - `ADMIN`: full filters allowed.
+- Ownership violations throw `AccessDeniedDomainException` from `core`, mapped to HTTP 403 by the `@RestControllerAdvice`.
+
+---
+
+## Pagination & Filtering Abstractions (Core, framework-free)
+
+- **Do NOT leak Spring Data `Pageable`/`Page` into `core`.** Define pure types in `core.model`:
+    - `PageRequest(page: Int, size: Int, sort: List<SortOrder>)`
+    - `Page<T>(content: List<T>, totalElements: Long, page: Int, size: Int)`
+    - One `XxxSearchCriteria` value object per searchable aggregate (`ClienteSearchCriteria`, `TecnicoSearchCriteria`, `ChamadoSearchCriteria`).
+- Repository output ports accept `criteria` + `PageRequest` and return `Page<DomainModel>`.
+- Infrastructure adapters translate core criteria/`PageRequest` to **Spring Data JPA Specifications** (default; QueryDSL acceptable if criteria grow complex) and map entities back to domain models.
+
+---
+
+## Multi-Channel Identity (Bots: WhatsApp / Telegram)
+
+- **Identification ≠ authentication.** CPF/CNPJ identifies a client but does NOT prove identity (widely known/leaked in Brazil → LGPD risk). CPF is only a lookup key during channel linking — never a credential, and never sufficient on its own to return ticket data.
+- **A bot is just another INPUT adapter.** It resolves an `AuthenticatedUser` from the channel identity and calls the SAME core use cases as the REST API (e.g. `BuscarChamadosUseCase`). Core never knows the request came from WhatsApp/Telegram.
+- **Channel binding (recommended pattern).** Persist a `ClientChannel` link (`clienteId`, `channelType`, `externalId`, `verifiedAt`). After linking, messages from that chat are authenticated automatically — no CPF prompts on every interaction.
+    - WhatsApp: the platform-verified sender phone is a possession factor; match it to the client's phone on file.
+    - Telegram / unknown phone: OTP flow — send a one-time code to the contact ON FILE (email/SMS) or a deep link from the logged-in app; bind on success.
+- **Read-only fallback (no link):** `protocolo` + a second factor (last 4 digits of phone, or CEP) may reveal ONLY minimal status, never full PII.
+- **Adapter placement:** inbound bot webhooks are INPUT adapters (live under `api/bot`); outbound message sending is an OUTPUT adapter in `infrastructure/integration`. Bot SDKs/tokens never touch `core`.
+
+---
+
 ## Strict Business Rules (Domain Invariants)
 
 ### Clients and Addresses
 - **Soft delete:** Clients are never physically deleted from the database. There must be an `active: Boolean` or `deletedAt: LocalDateTime?` flag. Inactive clients cannot open new tickets.
 - **Address binding:** An address belongs to exactly one client. A client can have multiple addresses.
+
+### Visibility (see Authentication & Authorization)
+- Resource visibility per role is a domain invariant enforced in `core` use cases. CLIENT/TECHNICIAN queries are force-scoped; ADMIN is unrestricted. This is the single source of truth for access scoping — do not re-implement it in controllers.
 
 ### Ticket Lifecycle and State Transitions
 Tickets follow a strict state machine based on the `TicketStatus` enum:
@@ -105,8 +171,8 @@ Develop in focused micro-tasks to save tokens and avoid hallucinations.
 
 1. **Focus and slicing:** Never try to implement the entire feature at once. Look at the Backlog below, execute the first pending `[ ]` task, and ask for authorization to proceed.
 2. **Extreme token economy:** Do not rewrite entire files for small changes. Show only the modified section using `// ...` comments to omit unchanged code.
-3. **No framework pollution in Core:** If you suggest a framework annotation (Spring, JPA, Jackson) inside the `core` package, the response is wrong.
-4. **Respect business rules:** Always validate that state transitions or deletions strictly respect the **Strict Business Rules** section above.
+3. **No framework pollution in Core:** If you suggest a framework annotation (Spring, JPA, Jackson, Jakarta, Spring Security) or a framework type (`Pageable`, `Page`, `Authentication`) inside the `core` package, the response is wrong.
+4. **Respect business rules:** Always validate that state transitions, deletions, or access scoping strictly respect the **Strict Business Rules** and **Authentication & Authorization** sections above.
 5. **Be direct:** Go straight to the point and code. No long introductions or conclusions.
 
 ---
@@ -131,23 +197,41 @@ Develop in focused micro-tasks to save tokens and avoid hallucinations.
 - [x] Task 2.3: Infra — JPA Mapping, Repositories, DTOs, and REST Controller.
 
 ### Phase 3: Ticket Management (Core Business)
-- [ ] Task 3.1: Core — Model (`Chamado`), Status Enum with internal transition validation, and Persistence Ports.
-- [ ] Task 3.2: Core — Automatic Categorization engine (keyword-based) and `PENDING_CATEGORIZATION` handling.
-- [ ] Task 3.3: Core — UseCases (Open, Assign Technician, Change Status, Cancel, Complete) + State transition Unit Tests.
-- [ ] Task 3.4: Infra — Database modeling, Mappers, DTOs, and REST Controllers for the Ticket flow.
+- [x] Task 3.1: Core — Model (`Chamado`), Status Enum with internal transition validation, and Persistence Ports.
+- [x] Task 3.2: Core — Automatic Categorization engine (keyword-based) and `PENDING_CATEGORIZATION` handling.
+- [x] Task 3.3: Core — UseCases (Open, Assign Technician, Change Status, Cancel, Complete) + State transition Unit Tests.
+- [x] Task 3.4: Infra — Database modeling, Mappers, DTOs, and REST Controllers for the Ticket flow.
 
-### Phase 4: Events and Messaging (Event-Driven Architecture)
-- [ ] Task 4.1: Core — Domain Event models and Messaging Output Ports (`EventPublisherPort`).
-- [ ] Task 4.2: Core — Update Ticket UseCases to fire events on state changes.
-- [ ] Task 4.3: Infra — Broker configuration (RabbitMQ/Kafka) and Publication Port implementation.
+### Phase 4: Search & Discovery (User/Frontend-Oriented)
+- [ ] Task 4.1: Core — Pagination abstractions (`Page<T>`, `PageRequest`, `SortOrder`) — framework-free.
+- [ ] Task 4.2: Core — `ClienteSearchCriteria` + `BuscarClientesUseCase` (filtered, paginated) + Unit Tests.
+- [ ] Task 4.3: Core — `TecnicoSearchCriteria` + search use case + Unit Tests.
+- [ ] Task 4.4: Core — `ChamadoSearchCriteria` + search use case (with ownership scoping) + Unit Tests.
+- [ ] Task 4.5: Core — `Chamado` `protocolo` (human-readable identifier) generation rule + Unit Tests.
+- [ ] Task 4.6: Infra — Extend repository ports/adapters with criteria queries (Spring Data Specifications) + pagination; list/search REST controllers and response DTOs.
 
-### Phase 5: Webhook System
-- [ ] Task 5.1: Core — Model (`WebhookSubscription`) and UseCase for partner subscription management.
-- [ ] Task 5.2: Infra — Async HTTP dispatch engine with Exponential Retry mechanism and failure logging.
+### Phase 5: Authentication & Authorization
+- [ ] Task 5.1: Core — `AuthenticatedUser` model, `Role` enum, `AccessDeniedDomainException`; thread the principal through query/command use cases; ownership-scoping invariants + Unit Tests.
+- [ ] Task 5.2: Infra — Spring Security (JWT) config in `infrastructure.security`; extract principal -> `AuthenticatedUser`; coarse role guards; map `AccessDeniedDomainException` -> HTTP 403.
+- [ ] Task 5.3: Infra — `/clientes/me` and `/tecnicos/me` endpoints (identity from token, no ID in path).
 
-### Phase 6: Observability and Differentiators (Polish)
-- [ ] Task 6.1: Structured Logging and Request Tracing (MDC/Trace ID) configuration.
-- [ ] Task 6.2: Idempotency for event consumption and Rate Limiting on REST APIs.
+### Phase 6: Events and Messaging (Event-Driven Architecture)
+- [ ] Task 6.1: Core — Domain Event models and Messaging Output Ports (`EventPublisherPort`).
+- [ ] Task 6.2: Core — Update Ticket UseCases to fire events on state changes.
+- [ ] Task 6.3: Infra — Broker configuration (RabbitMQ/Kafka) and Publication Port implementation.
+
+### Phase 7: Webhook System
+- [ ] Task 7.1: Core — Model (`WebhookSubscription`) and UseCase for partner subscription management.
+- [ ] Task 7.2: Infra — Async HTTP dispatch engine with Exponential Retry mechanism and failure logging.
+
+### Phase 8: Observability and Differentiators (Polish)
+- [ ] Task 8.1: Structured Logging and Request Tracing (MDC/Trace ID) configuration.
+- [ ] Task 8.2: Idempotency for event consumption and Rate Limiting on REST APIs.
+
+### Phase 9: Multi-Channel Bot Identity (Future)
+- [ ] Task 9.1: Core — `ChannelType`, `ClientChannel` model, `ClientChannelRepositoryPort`, `ChannelVerificationPort` (OTP issue/validate).
+- [ ] Task 9.2: Core — `ResolveClientByChannelUseCase`, `LinkClientChannelUseCase`, `VerifyClientChannelUseCase` + Unit Tests. Reuse `BuscarChamadosUseCase` scoped by the resolved `AuthenticatedUser`.
+- [ ] Task 9.3: Infra — Inbound webhook adapter (WhatsApp/Telegram) under `api/bot` -> resolves principal -> core; `OutboundMessagePort` implementation; OTP store with TTL (reuse Redis from Phase 8 if present, else DB row with expiry).
 
 ---
 
