@@ -1,8 +1,21 @@
 package com.periclao.fixflow.infrastructure.config
 
+import com.periclao.fixflow.core.repository.ChamadoRepositoryPort
 import com.periclao.fixflow.core.repository.ClienteRepositoryPort
 import com.periclao.fixflow.core.repository.EnderecoRepositoryPort
 import com.periclao.fixflow.core.repository.TecnicoRepositoryPort
+import com.periclao.fixflow.core.usecase.chamado.AbrirChamadoUseCase
+import com.periclao.fixflow.core.usecase.chamado.AtribuirTecnicoChamadoUseCase
+import com.periclao.fixflow.core.usecase.chamado.CancelarChamadoUseCase
+import com.periclao.fixflow.core.usecase.chamado.ConcluirChamadoUseCase
+import com.periclao.fixflow.core.usecase.chamado.ConsultarChamadoUseCase
+import com.periclao.fixflow.core.usecase.chamado.MudarStatusChamadoUseCase
+import com.periclao.fixflow.core.usecase.chamado.impl.AbrirChamadoService
+import com.periclao.fixflow.core.usecase.chamado.impl.AtribuirTecnicoChamadoService
+import com.periclao.fixflow.core.usecase.chamado.impl.CancelarChamadoService
+import com.periclao.fixflow.core.usecase.chamado.impl.ConcluirChamadoService
+import com.periclao.fixflow.core.usecase.chamado.impl.ConsultarChamadoService
+import com.periclao.fixflow.core.usecase.chamado.impl.MudarStatusChamadoService
 import com.periclao.fixflow.core.usecase.cliente.AtualizarClienteUseCase
 import com.periclao.fixflow.core.usecase.cliente.ConsultarClienteUseCase
 import com.periclao.fixflow.core.usecase.cliente.CriarClienteUseCase
@@ -27,6 +40,8 @@ import com.periclao.fixflow.core.usecase.tecnico.impl.AtualizarTecnicoService
 import com.periclao.fixflow.core.usecase.tecnico.impl.ConsultarTecnicoService
 import com.periclao.fixflow.core.usecase.tecnico.impl.CriarTecnicoService
 import com.periclao.fixflow.core.usecase.tecnico.impl.InativarTecnicoService
+import com.periclao.fixflow.infrastructure.repository.ChamadoJpaRepository
+import com.periclao.fixflow.infrastructure.repository.ChamadoRepositoryAdapter
 import com.periclao.fixflow.infrastructure.repository.ClienteJpaRepository
 import com.periclao.fixflow.infrastructure.repository.ClienteRepositoryAdapter
 import com.periclao.fixflow.infrastructure.repository.EnderecoJpaRepository
@@ -40,10 +55,9 @@ import org.springframework.context.annotation.Configuration
 class UseCaseConfig(
     private val clienteJpaRepository: ClienteJpaRepository,
     private val enderecoJpaRepository: EnderecoJpaRepository,
-    private val tecnicoJpaRepository: TecnicoJpaRepository
+    private val tecnicoJpaRepository: TecnicoJpaRepository,
+    private val chamadoJpaRepository: ChamadoJpaRepository
 ) {
-
-    // ── Adapters de persistência ──────────────────────────────────────────────
 
     @Bean
     fun clienteRepositoryPort(): ClienteRepositoryPort =
@@ -52,8 +66,6 @@ class UseCaseConfig(
     @Bean
     fun enderecoRepositoryPort(): EnderecoRepositoryPort =
         EnderecoRepositoryAdapter(enderecoJpaRepository)
-
-    // ── UseCases de Cliente ───────────────────────────────────────────────────
 
     @Bean
     fun criarClienteUseCase(clienteRepositoryPort: ClienteRepositoryPort): CriarClienteUseCase =
@@ -70,8 +82,6 @@ class UseCaseConfig(
     @Bean
     fun inativarClienteUseCase(clienteRepositoryPort: ClienteRepositoryPort): InativarClienteUseCase =
         InativarClienteService(clienteRepositoryPort)
-
-    // ── UseCases de Endereço ──────────────────────────────────────────────────
 
     @Bean
     fun adicionarEnderecoUseCase(
@@ -95,8 +105,6 @@ class UseCaseConfig(
     fun removerEnderecoUseCase(enderecoRepositoryPort: EnderecoRepositoryPort): RemoverEnderecoUseCase =
         RemoverEnderecoService(enderecoRepositoryPort)
 
-    // ── Adapters e UseCases de Técnico ───────────────────────────────────────
-
     @Bean
     fun tecnicoRepositoryPort(): TecnicoRepositoryPort =
         TecnicoRepositoryAdapter(tecnicoJpaRepository)
@@ -116,4 +124,39 @@ class UseCaseConfig(
     @Bean
     fun inativarTecnicoUseCase(tecnicoRepositoryPort: TecnicoRepositoryPort): InativarTecnicoUseCase =
         InativarTecnicoService(tecnicoRepositoryPort)
+
+    @Bean
+    fun chamadoRepositoryPort(): ChamadoRepositoryPort =
+        ChamadoRepositoryAdapter(chamadoJpaRepository)
+
+    @Bean
+    fun abrirChamadoUseCase(
+        chamadoRepositoryPort: ChamadoRepositoryPort,
+        clienteRepositoryPort: ClienteRepositoryPort,
+        enderecoRepositoryPort: EnderecoRepositoryPort
+    ): AbrirChamadoUseCase =
+        AbrirChamadoService(chamadoRepositoryPort, clienteRepositoryPort, enderecoRepositoryPort)
+
+    @Bean
+    fun atribuirTecnicoChamadoUseCase(
+        chamadoRepositoryPort: ChamadoRepositoryPort,
+        tecnicoRepositoryPort: TecnicoRepositoryPort
+    ): AtribuirTecnicoChamadoUseCase =
+        AtribuirTecnicoChamadoService(chamadoRepositoryPort, tecnicoRepositoryPort)
+
+    @Bean
+    fun mudarStatusChamadoUseCase(chamadoRepositoryPort: ChamadoRepositoryPort): MudarStatusChamadoUseCase =
+        MudarStatusChamadoService(chamadoRepositoryPort)
+
+    @Bean
+    fun cancelarChamadoUseCase(chamadoRepositoryPort: ChamadoRepositoryPort): CancelarChamadoUseCase =
+        CancelarChamadoService(chamadoRepositoryPort)
+
+    @Bean
+    fun concluirChamadoUseCase(chamadoRepositoryPort: ChamadoRepositoryPort): ConcluirChamadoUseCase =
+        ConcluirChamadoService(chamadoRepositoryPort)
+
+    @Bean
+    fun consultarChamadoUseCase(chamadoRepositoryPort: ChamadoRepositoryPort): ConsultarChamadoUseCase =
+        ConsultarChamadoService(chamadoRepositoryPort)
 }
