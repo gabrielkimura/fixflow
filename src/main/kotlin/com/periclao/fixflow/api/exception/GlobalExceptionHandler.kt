@@ -1,11 +1,15 @@
 package com.periclao.fixflow.api.exception
 
+import com.periclao.fixflow.core.exception.ChamadoNaoEncontradoException
 import com.periclao.fixflow.core.exception.ClienteInativoException
 import com.periclao.fixflow.core.exception.ClienteNaoEncontradoException
+import com.periclao.fixflow.core.exception.DescricaoEncerramentoObrigatoriaException
 import com.periclao.fixflow.core.exception.EmailJaCadastradoException
 import com.periclao.fixflow.core.exception.EnderecoNaoEncontradoException
 import com.periclao.fixflow.core.exception.TecnicoInativoException
 import com.periclao.fixflow.core.exception.TecnicoNaoEncontradoException
+import com.periclao.fixflow.core.exception.TransicaoRequerOperacaoDedicadaException
+import com.periclao.fixflow.core.exception.TransicaoStatusInvalidaException
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.MethodArgumentNotValidException
@@ -18,11 +22,25 @@ class GlobalExceptionHandler {
     @ExceptionHandler(
         ClienteNaoEncontradoException::class,
         EnderecoNaoEncontradoException::class,
-        TecnicoNaoEncontradoException::class
+        TecnicoNaoEncontradoException::class,
+        ChamadoNaoEncontradoException::class
     )
     fun handleNaoEncontrado(ex: RuntimeException): ResponseEntity<ErroResponse> =
         ResponseEntity.status(HttpStatus.NOT_FOUND)
             .body(ErroResponse(status = 404, mensagem = ex.message ?: "Recurso não encontrado"))
+
+    @ExceptionHandler(TransicaoStatusInvalidaException::class)
+    fun handleTransicaoInvalida(ex: TransicaoStatusInvalidaException): ResponseEntity<ErroResponse> =
+        ResponseEntity.status(HttpStatus.CONFLICT)
+            .body(ErroResponse(status = 409, mensagem = ex.message ?: "Transição de status inválida"))
+
+    @ExceptionHandler(
+        TransicaoRequerOperacaoDedicadaException::class,
+        DescricaoEncerramentoObrigatoriaException::class
+    )
+    fun handleRequisicaoInvalida(ex: RuntimeException): ResponseEntity<ErroResponse> =
+        ResponseEntity.status(HttpStatus.BAD_REQUEST)
+            .body(ErroResponse(status = 400, mensagem = ex.message ?: "Requisição inválida"))
 
     @ExceptionHandler(ClienteInativoException::class, TecnicoInativoException::class)
     fun handleRecursoInativo(ex: RuntimeException): ResponseEntity<ErroResponse> =
